@@ -1,0 +1,64 @@
+[Unit]
+Description=P1 smart-meter raw telegram logger
+Documentation=https://github.com/kduvekot/p1-logger
+# Only run while the P1 cable is actually plugged in.
+BindsTo=dev-ttyUSB0.device
+After=dev-ttyUSB0.device
+
+[Service]
+Type=simple
+
+# Dedicated unprivileged system user. Member of `dialout` for /dev/ttyUSB0.
+User=p1logger
+Group=p1logger
+SupplementaryGroups=dialout
+
+WorkingDirectory=/var/lib/p1-logger
+
+# Site-specific values (P1 device/baud, rclone remote)
+# live here. install.sh writes it; users can hand-edit and `systemctl restart`.
+EnvironmentFile=/etc/p1-logger/p1-logger.conf
+
+# Uses the distro's /usr/bin/python3 and the `python3-serial` apt package (no
+# network at runtime, no PEP 723 resolution). The inline script metadata at
+# the top of the .py file is still valid, so `uv run --script ...` works for
+# interactive dev without changing anything here.
+ExecStart=/usr/bin/python3 /opt/p1-logger/p1-logger.py \
+    --logdir /var/lib/p1-logger/data \
+    --device=${P1_DEVICE} \
+    --baud=${P1_BAUD}
+
+Restart=on-failure
+RestartSec=5s
+
+# --- Hardening ---------------------------------------------------------------
+# The logger has exactly one job: read /dev/ttyUSB0 and append to files under
+# /var/lib/p1-logger/data. It needs no network whatsoever -- off-box sync is
+# handled by a separate timer-driven unit (p1-sync.service). Because
+# the service uses apt-installed pyserial (not uv-resolved), there is no
+# first-run network dependency either.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+# No network sockets at all -- only AF_UNIX for journald logging.
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/p1-logger
+
+[Install]
+WantedBy=dev-ttyUSB0.device

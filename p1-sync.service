@@ -1,0 +1,61 @@
+[Unit]
+Description=P1 telegram log sync to rclone remote
+Documentation=https://github.com/kduvekot/p1-logger
+Wants=network-online.target
+After=network-online.target
+
+# Do not run at the same time as ourselves if the timer fires while a previous
+# run is still going. systemd handles this implicitly for Type=oneshot, but
+# being explicit is nice.
+ConditionPathIsDirectory=/var/lib/p1-logger/data
+# Skip the whole thing if the user hasn't set up rclone yet.
+ConditionFileNotEmpty=/etc/p1-logger/rclone.conf
+
+[Service]
+Type=oneshot
+
+User=p1logger
+Group=p1logger
+WorkingDirectory=/var/lib/p1-logger
+
+# P1_REMOTE (e.g. `nas:share/host/p1`) lives in the config file,
+# managed by install.sh and hand-editable.
+EnvironmentFile=/etc/p1-logger/p1-logger.conf
+
+# Extra belt: quietly skip this timer tick if P1_REMOTE is unset (sync disabled).
+ExecCondition=/bin/sh -c 'test -n "$${P1_REMOTE}"'
+
+# `copy` (not `sync`) so the remote is an append-only mirror -- we never delete
+# remote objects just because the local copy rotated or was pruned.
+ExecStart=/usr/bin/rclone copy \
+    --config /etc/p1-logger/rclone.conf \
+    --log-level INFO \
+    --stats 0 \
+    /var/lib/p1-logger/data \
+    ${P1_REMOTE}
+
+# Reasonable retry/backoff for a flaky home LAN.
+TimeoutStartSec=5min
+
+# --- Hardening ---------------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Needs to read the log tree and the rclone config; writes nothing locally.
+ReadOnlyPaths=/var/lib/p1-logger /etc/p1-logger

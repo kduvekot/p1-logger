@@ -1,0 +1,15 @@
+[Unit]
+Description=Periodically sync P1 telegram logs to rclone remote
+Documentation=https://github.com/kduvekot/p1-logger
+
+[Timer]
+# First run 30s after boot, then every minute while the box is up.
+OnBootSec=30s
+OnUnitActiveSec=1min
+# Don't bunch up if the box was off: run once on start if we missed a slot.
+Persistent=true
+AccuracySec=10s
+Unit=p1-sync.service
+
+[Install]
+WantedBy=timers.target
